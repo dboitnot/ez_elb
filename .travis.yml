@@ -9,6 +9,8 @@ script:
   
 deploy:
   provider: pypi
-  user: ezelb
+  on:
+    branch: master
+  user: ezelb  
   password:
     secure: CN90FhGsDUJdjxu8MMUeRh2DoaWXKiX8APLiCO47SDl/diaPYzJ5hS0rsj4Q3443FtGQPwGzfBqZ2mS+QZEBQE/X4SVMedPZWe0IeOlFYGF0OywXjlQ8ORCPEB9iuA+jhWiWI1xUGY4Syca6pR8eXRzOc/mzN0yYoF0SeVuI+TJ4zT7PWkijEM3eIH+ueGXTqFCT8foPykbkbqzzwSaWjSEqVp7s0vqE1AzvIUXc+EgOl5xg12hoqP31UqbkaU/6Bh+F9x4zKxQQ4yeAsUdCaZRPfSe/AfD2KDbb9ix3qVYK3+Yg02k7eLnkoI8uIha+/og+YABvGIJYbJtUlunIeIWbDmEqspMJS88F7u2YB7C+MmAUFPtsYH7/T+E9qbQzUBAEFHuF4ptjBkgAohqm2drK2mhek8OB+EXLbF3NJg558s+dVavX3NXO/lu2s5Po7bZcv1uqugpYyicq+8b5OM91FEIMQXS2MdMehqeoIrzmbL3+8YczFqNFF3xSBmHm3RTFb7RIaKba1DxO1tifmzMpVQL4oAUe/vxArQ5tt5z/7kkRkdR/jBEIZKrrEVXoF80X/kA21zmdF1N3eZ5evyDseKJmNYdqn5r04Dsvuh5MWSclFz7XmHUzARYRMyfBKyHPLZ81Lm/e+zIoF9rDZvBtB27nzmztOALM3a4qyww=
