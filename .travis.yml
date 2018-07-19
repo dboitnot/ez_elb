@@ -1,8 +1,12 @@
 sudo: false
 language: python
+
 install:
-- pip install -U pip wheel setuptools twine
-script: []
+  - pip install -U pip wheel setuptools twine
+  
+script:
+  - ls
+  
 deploy:
   provider: pypi
   user: ezelb
