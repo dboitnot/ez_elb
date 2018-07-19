@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="ez_elb",
-    version="0.1.0",
+    version="0.1.5",
     author="Dan Boitnott",
     author_email="boitnott@sigcorp.com",
     description="Easily define complex ELB CloudFormation templates",
@@ -18,4 +18,7 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ),
+    install_requires=[
+        'troposphere>=2.3.1'
+    ]
 )
