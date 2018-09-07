@@ -55,13 +55,34 @@
 
   (while (not (empty? args))
     (setv head (first (pop-head args)))
-    (if (keyword? head)
-        ;; Convert the keyword into a function and pop it's arguments
-        (do (setv f (kw->fn head))
-            (yield (apply f (pop-head args (arity f)))))
 
-        ;; Not a keyword, must be a function so leave it alone.
-        (yield head))))
+    
+    (cond
+      ;; If it's a keyword, convert the keyword into a function and
+      ;; pop it's arguments
+      [(keyword? head) (do (setv f (kw->fn head))
+                           (yield (apply f (pop-head args (arity f)))))]
+
+      ;; If it's None yield a no-op. This allows the user to put
+      ;; arbitrary code like print statements, etc. in the ez-elb
+      ;; macro
+      [(none? head) (yield (fn [_]))]
+
+      ;; It might be a good idea to add a condition here to accept
+      ;; scalars in the same way we accept None. That way the user
+      ;; could call functions which have a return value. I'm going to
+      ;; hold off on this for now.
+
+      ;; If it's an arity 1 function then no further processessing
+      ;; needed.
+      [(and (callable head) (= 1 (arity head))) (yeild head)]
+
+      ;; If none of the above apply, raise an exception.
+      ;;
+      ;; TODO: It'd be nice if we could get some line-number info here
+      ;;       because without it the user's going to have a hard time
+      ;;       identifying the problem.
+      [True (raise (ValidationException "invalid statement within ez-elb macro"))])))
 
 (defn ez-elb-f [sceptre_user_dat args dump-def]
   "This is the heart of EZ-ELB. It processes it's arguments and produces a template."
