@@ -3,6 +3,10 @@
 (import inspect)
 (import pprint)
 
+(defclass ValidationException [Exception]
+  (defn --init-- [self message]
+    (.--init-- (super Exception self) message)))
+
 ;;
 ;; We will refer to the data structure which evolves into the template
 ;; as an EDef, short for ELB Definition.
@@ -72,15 +76,27 @@
          (ez-elb-f sceptre_user_dat ~args dump-def))
        (defmain [&rest args] (sceptre_handler None True))))
 
-(defmacro/g! defkw-kv [kw desc &optional [key None]]
+(defmacro/g! defkw-kv [kw desc &optional [xform 'identity]]
 
   "Define a simple key/value keyword function which sets the
-  associated value in the :config map. If key is not supplied it is
-  set to kw."
-  `(setv ~(HySymbol (+ "ez-elb-kw-" (name kw)))  ; should be able to use kw->fname but it didn't work
+  associated value in the :config map.
+
+  If kw is a collection, it's first item will be the user-facing
+  keyword and it's second will be the key used in the config dict.
+
+  The user input will be passed through xform before being stored. By
+  default xform is the identity function."
+
+  (if (coll? kw)
+      (do (setv user-kw (get kw 0))
+          (setv conf-kw (get kw 1)))
+      (do (setv user-kw kw)
+          (setv conf-kw kw)))
+  
+  `(setv ~(HySymbol (+ "ez-elb-kw-" (name user-kw)))  ; should be able to use kw->fname but it didn't work
          (fn [~g!v] ~desc
            (fn [~g!edef]
-             (assoc (. ~g!edef [:config]) ~(or key kw) ~g!v)))))
+             (assoc (. ~g!edef [:config]) ~conf-kw (~xform ~g!v))))))
 
 (defn ez-elb-kw-no-op []
   "no-op keyword function"
@@ -94,14 +110,11 @@
 ;;
 ;; Keyword Definitions
 ;;
-(defkw-kv :name "the name of the ELB" :elb-name)
+(defkw-kv [:name :elb-name] "the name of the ELB")
 (defkw-kv :subnet-ids "the subnet IDs")
 (defkw-kv :vpc "the VPC for the ELB")
 (defkw-kv :certificate-id "certificate for the ELB")
 (defkw-kv :alarm-topic "SMS topic where CloudWatch alarms will be sent")
 (defkw-kv :log-bucket "ELB logs will be sent to this bucket")
+(defkw-kv :global-tags "a list of tags to assign to all taggable resources in key/value pairs" list-pairs->tag-list)
 
-(defn ez-elb-kw-global-tags [v]
-  "a list of tags to assign to all taggable resources in key/value pairs"
-  (fn [edef]
-    (assoc (. edef [:config]) :global-tags (list-pairs->tag-list v))))
