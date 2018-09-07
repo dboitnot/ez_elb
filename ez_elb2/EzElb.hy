@@ -2,11 +2,18 @@
         [troposphere.s3 [Bucket]]
         inspect
         pprint
-        collections)
+        collections
+        threading)
 
 (defclass ValidationException [Exception]
   (defn --init-- [self message]
     (.--init-- (super Exception self) message)))
+
+
+;; A thread-local object used to provide context to functions within
+;; an ez-elb macro
+(setv *context* (threading.local))
+
 
 ;;
 ;; Utility Functions
@@ -53,59 +60,43 @@
    :config {}
    :target-paths (collections.defaultdict (fn [] []))})
 
-(defn args->fns [args]
-  "Returns a generator which yields arity 1 functions for mutating the
-  EDef. It's primary purpose is to handle keywords."
-
-  (while (not (empty? args))
-    (setv head (first (pop-head args)))
-    
-    (cond
-      ;; If it's a keyword, convert the keyword into a function and
-      ;; pop it's arguments
-      [(keyword? head) (do (setv f (kw->fn head))
-                           (yield (apply f (pop-head args (arity f)))))]
-
-      ;; If it's None yield a no-op. This allows the user to put
-      ;; arbitrary code like print statements, etc. in the ez-elb
-      ;; macro
-      [(none? head) (yield (fn [_]))]
-
-      ;; It might be a good idea to add a condition here to accept
-      ;; non-callables in the same way we accept None. That way the
-      ;; user could call non-EZ-ELB functions which have a return
-      ;; value. I'm going to hold off on this for now.
-
-      ;; If it's an arity 1 function then no further processessing is
-      ;; needed.
-      [(and (callable head) (= 1 (arity head))) (yield head)]
-
-      ;; If none of the above apply, raise an exception.
-      ;;
-      ;; TODO: It'd be nice if we could get some line-number info here
-      ;;       because without it the user's going to have a hard time
-      ;;       identifying the problem.
-      [True (raise (ValidationException "invalid statement within ez-elb macro"))])))
-
-(defn ez-elb-f [sceptre_user_dat args dump-def]
-  "This is the heart of EZ-ELB. It processes it's arguments and produces a template."
-
-  ;; Build an empty, default edef
-  (setv edef (init-edef sceptre_user_dat))
-
-  ;; Process args to create the edef desired by the user
-  (for [f (args->fns args)] (apply f [edef]))
-
+(defn ez-elb-f [edef dump-def]
   (if dump-def (pprint.pprint edef))
-  
+
   (setv template (Template))
   (.add_resource template (Bucket "SomeBucket"))
   (.to_json template))
 
-(defmacro ez-elb [&rest args]
-  `(do (defn sceptre_handler [sceptre_user_dat &optional dump-def]
-         (ez-elb-f sceptre_user_dat ~args dump-def))
-       (defmain [&rest args] (sceptre_handler None True))))
+(defn args->fns [args]
+  (while (not (empty? args))
+    (setv head (first (pop-head args)))   
+    (if (keyword? head)
+
+        ;; Convert keywords into function calls
+        ;; TODO: Wrap symbol generation as kw->sym
+        (do (setv f (kw->fn head))
+            (yield (HyExpression (+ [(HySymbol (+ "ez-elb-kw-" (name head)))] (pop-head args (arity f))))))
+
+        ;; Yield the rest unmodified
+        (yield head))))
+
+(defmacro ez-elb [&rest args]  
+  `(do
+     ;; Build the sceptre handler
+     ~(+ '(defn sceptre_handler [sceptre_user_dat &optional dump-def]
+            ;; Build an initial edef and put it in the thread-local context
+            (setv edef (init-edef sceptre_user_dat))
+            (setv *context*.edef edef))
+
+         ;; Handle the body of the macro
+         (list (args->fns (list args)))
+
+         ;; Do the rest of the processing in a proper function
+         ['(ez-elb-f edef dump-def)])         
+
+     ;; Create a __main__ function for testing purposes
+     (defmain [&rest args] (sceptre_handler None True))))
+        
 
 (defn target [host port path &optional [protocol "HTTP"]]
   "Defines a target for a path."
@@ -141,9 +132,8 @@
       (do (setv user-kw kw)
           (setv conf-kw kw)))
   
-  `(defkw ~user-kw [~g!v] ~desc
-     (fn [~g!edef]
-       (assoc (get ~g!edef :config) ~conf-kw (~xform ~g!v)))))
+  `(defkw ~user-kw [~g!v] ~desc     
+     (assoc (get *context*.edef :config) ~conf-kw (~xform ~g!v))))
 
 (defkw-kv [:name :elb-name] "the name of the ELB")
 (defkw-kv :subnet-ids "the subnet IDs")
