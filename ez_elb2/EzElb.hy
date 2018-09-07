@@ -1,7 +1,8 @@
-(import [troposphere [Template]])
-(import [troposphere.s3 [Bucket]])
-(import inspect)
-(import pprint)
+(import [troposphere [Template]]
+        [troposphere.s3 [Bucket]]
+        inspect
+        pprint
+        collections)
 
 (defclass ValidationException [Exception]
   (defn --init-- [self message]
@@ -49,7 +50,8 @@
 (defn init-edef [sceptre_user_dat]
   "returns a skeleton EDef"
   {:sceptre-user-dat sceptre_user_dat
-   :config {} })
+   :config {}
+   :target-paths (collections.defaultdict (fn [] []))})
 
 (defn args->fns [args]
   "Returns a generator which yields arity 1 functions for mutating the
@@ -76,7 +78,7 @@
 
       ;; If it's an arity 1 function then no further processessing is
       ;; needed.
-      [(and (callable head) (= 1 (arity head))) (yeild head)]
+      [(and (callable head) (= 1 (arity head))) (yield head)]
 
       ;; If none of the above apply, raise an exception.
       ;;
@@ -105,6 +107,15 @@
          (ez-elb-f sceptre_user_dat ~args dump-def))
        (defmain [&rest args] (sceptre_handler None True))))
 
+(defn target [host port path &optional [protocol "HTTP"]]
+  "Defines a target for a path."
+
+  (fn [edef]
+    (.append (get edef :target-paths path)
+             {:host host
+              :port port
+              :protocol protocol})))
+
 ;;
 ;; Keyword Definitions
 ;;
@@ -132,7 +143,7 @@
   
   `(defkw ~user-kw [~g!v] ~desc
      (fn [~g!edef]
-       (assoc (. ~g!edef [:config]) ~conf-kw (~xform ~g!v)))))
+       (assoc (get ~g!edef :config) ~conf-kw (~xform ~g!v)))))
 
 (defkw-kv [:name :elb-name] "the name of the ELB")
 (defkw-kv :subnet-ids "the subnet IDs")
