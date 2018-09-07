@@ -8,14 +8,8 @@
     (.--init-- (super Exception self) message)))
 
 ;;
-;; We will refer to the data structure which evolves into the template
-;; as an EDef, short for ELB Definition.
+;; Utility Functions
 ;;
-
-(defn init-edef [sceptre_user_dat]
-  "returns a skeleton EDef"
-  {:sceptre-user-dat sceptre_user_dat
-   :config {} })
 
 (defn kw->fname [kw]
   (+ "ez-elb-kw-" (name kw)))
@@ -41,6 +35,19 @@
 (defn arity [f]
   "returns the arity of the given function"
   (len (get (inspect.getargspec f) 0)))
+
+
+;;
+;; EZ-ELB Core Functions & Macros
+;;
+;; We will refer to the data structure which evolves into the template
+;; as an EDef, short for ELB Definition.
+;;
+
+(defn init-edef [sceptre_user_dat]
+  "returns a skeleton EDef"
+  {:sceptre-user-dat sceptre_user_dat
+   :config {} })
 
 (defn args->fns [args]
   "Returns a generator which yields arity 1 functions for mutating the
@@ -76,6 +83,14 @@
          (ez-elb-f sceptre_user_dat ~args dump-def))
        (defmain [&rest args] (sceptre_handler None True))))
 
+;;
+;; Keyword Definitions
+;;
+
+(defmacro defkw [kw &rest args]
+  "define a keyword function just like defn but specifying a keyword for the name"
+  (+ `(defn ~(HySymbol (+ "ez-elb-kw-" (name kw)))) (list args)))
+
 (defmacro/g! defkw-kv [kw desc &optional [xform 'identity]]
 
   "Define a simple key/value keyword function which sets the
@@ -93,23 +108,10 @@
       (do (setv user-kw kw)
           (setv conf-kw kw)))
   
-  `(setv ~(HySymbol (+ "ez-elb-kw-" (name user-kw)))  ; should be able to use kw->fname but it didn't work
-         (fn [~g!v] ~desc
-           (fn [~g!edef]
-             (assoc (. ~g!edef [:config]) ~conf-kw (~xform ~g!v))))))
+  `(defkw ~user-kw [~g!v] ~desc
+     (fn [~g!edef]
+       (assoc (. ~g!edef [:config]) ~conf-kw (~xform ~g!v)))))
 
-(defn ez-elb-kw-no-op []
-  "no-op keyword function"
-  (fn []))
-
-(defn ez-elb-kw-name [n]
-  "set the name of the ELB"
-  (fn [edef]
-    (assoc (. edef [:config]) :elb-name n)))
-
-;;
-;; Keyword Definitions
-;;
 (defkw-kv [:name :elb-name] "the name of the ELB")
 (defkw-kv :subnet-ids "the subnet IDs")
 (defkw-kv :vpc "the VPC for the ELB")
@@ -118,3 +120,4 @@
 (defkw-kv :log-bucket "ELB logs will be sent to this bucket")
 (defkw-kv :global-tags "a list of tags to assign to all taggable resources in key/value pairs" list-pairs->tag-list)
 
+(defkw :no-op [] (fn [_]))
