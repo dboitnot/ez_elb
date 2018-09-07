@@ -120,4 +120,4 @@
 (defkw-kv :log-bucket "ELB logs will be sent to this bucket")
 (defkw-kv :global-tags "a list of tags to assign to all taggable resources in key/value pairs" list-pairs->tag-list)
 
-(defkw :no-op [] (fn [_]))
+(defkw :no-op [] "does nothing" (fn [_]))
