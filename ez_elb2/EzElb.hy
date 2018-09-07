@@ -29,8 +29,10 @@
   ret)
 
 (defn list-pairs->tag-list [l]
-  "returns a list of single-entry maps suitable for specifying AWS tags from a list of paired strings"
-  (list (map (fn [p] (dict [p])) (partition l))))
+  "returns a list of maps suitable for specifying AWS tags from a list
+  of paired strings"
+
+  (list (map (fn [p] {"Key" (get p 0) "Value" (get p 1)}) (partition l))))
 
 (defn arity [f]
   "returns the arity of the given function"
@@ -55,7 +57,6 @@
 
   (while (not (empty? args))
     (setv head (first (pop-head args)))
-
     
     (cond
       ;; If it's a keyword, convert the keyword into a function and
@@ -69,11 +70,11 @@
       [(none? head) (yield (fn [_]))]
 
       ;; It might be a good idea to add a condition here to accept
-      ;; scalars in the same way we accept None. That way the user
-      ;; could call functions which have a return value. I'm going to
-      ;; hold off on this for now.
+      ;; non-callables in the same way we accept None. That way the
+      ;; user could call non-EZ-ELB functions which have a return
+      ;; value. I'm going to hold off on this for now.
 
-      ;; If it's an arity 1 function then no further processessing
+      ;; If it's an arity 1 function then no further processessing is
       ;; needed.
       [(and (callable head) (= 1 (arity head))) (yeild head)]
 
