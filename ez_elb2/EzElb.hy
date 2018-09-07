@@ -3,7 +3,10 @@
         inspect
         pprint
         collections
-        threading)
+        threading
+        logging)
+
+(setv *log* (logging.getLogger (+ "sceptre." --name--)))
 
 (defclass ValidationException [Exception]
   (defn --init-- [self message]
@@ -60,8 +63,8 @@
    :config {}
    :target-paths (collections.defaultdict (fn [] []))})
 
-(defn ez-elb-f [edef dump-def]
-  (if dump-def (pprint.pprint edef))
+(defn ez-elb-f [edef]
+  (*log*.debug "Post-body ELB-Def:\n\n%s\n" (pprint.pformat edef))
 
   (setv template (Template))
   (.add_resource template (Bucket "SomeBucket"))
@@ -83,7 +86,7 @@
 (defmacro ez-elb [&rest args]  
   `(do
      ;; Build the sceptre handler
-     ~(+ '(defn sceptre_handler [sceptre_user_dat &optional dump-def]
+     ~(+ '(defn sceptre_handler [sceptre_user_dat]
             ;; Build an initial edef and put it in the thread-local context
             (setv edef (init-edef sceptre_user_dat))
             (setv *context*.edef edef))
@@ -92,11 +95,13 @@
          (list (args->fns (list args)))
 
          ;; Do the rest of the processing in a proper function
-         ['(ez-elb-f edef dump-def)])         
+         ['(ez-elb-f edef)])         
 
      ;; Create a __main__ function for testing purposes
-     (defmain [&rest args] (sceptre_handler None True))))
-        
+     (defmain [&rest args]
+       (logging.basicConfig)
+       (*log*.setLevel logging.DEBUG)
+       (sceptre_handler None))))        
 
 (defn target [host port path &optional [protocol "HTTP"]]
   "Defines a target for a path."
