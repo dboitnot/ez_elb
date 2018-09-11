@@ -1,4 +1,12 @@
-(import [troposphere [Template]]
+(import [troposphere [Template Ref Sub GetAtt Output Export]]
+        [troposphere.cloudwatch [Alarm MetricDimension]]
+        [troposphere.ec2 [SecurityGroup SecurityGroupRule]]
+        [troposphere.ecs [TaskDefinition ContainerDefinition Environment PortMapping Service
+                          DeploymentConfiguration]]
+        [troposphere.ecs [LoadBalancer :as EcsLoadBalancer]]
+        [troposphere.elasticloadbalancingv2 [LoadBalancer Listener ListenerRule TargetGroup Certificate Action
+                                             TargetDescription Condition Matcher TargetGroupAttribute LoadBalancerAttributes]]
+        [troposphere.route53 [RecordSetGroup RecordSet]]
         [troposphere.s3 [Bucket]]
         [functools [partial]]
         inspect
@@ -6,6 +14,8 @@
         collections
         threading
         copy
+        yaml
+        json
         logging)
 
 (setv *log* (logging.getLogger (+ "sceptre." --name--)))
@@ -36,6 +46,17 @@
 ;;
 ;; Utility Functions
 ;;
+
+(defn dict-keys-kw->str [d]
+  "returns a new dictionary with Hy keyword keys converted to strings"
+  (dict (map (fn [p] [(name (get p 0)) (get p 1)]) (.items d))))
+
+(defn apply-kw [f pargs kws]
+  
+  "apply the function f with the keyword args kws specified as Hy
+  keywords with positional args pargs"
+  
+  (apply f pargs (dict-keys-kw->str kws)))
 
 (defn kw->fname [kw]
   (+ "ez-elb-kw-" (name kw)))
@@ -71,6 +92,19 @@
   "returns the arity of the given function"
   (len (get (inspect.getargspec f) 0)))
 
+(defmacro if-get [coll v lookup if-true &optional [if-false '(do)]]
+
+  "If lookup can be found in coll then v is assigned it's value and
+  if-true is called. Otherwise if-false is called."
+
+  (if-not (coll? lookup)
+          (setv lookup [lookup]))
+
+  `(try
+     (setv ~v (apply (partial get ~coll) ~lookup))
+     ~if-true
+     (except [KeyError] ~if-false)))
+
 ;;
 ;; EZ-ELB Core Functions & Macros
 ;;
@@ -81,7 +115,9 @@
 (defn init-edef [sceptre_user_dat]
   "returns a skeleton EDef"
   {:sceptre-user-dat sceptre_user_dat
-   :config {}
+   :config {:idle-timeout-seconds 120
+            :healthy-threshold-count 2
+            :healthy-http-codes "200-399"}
    :target-paths (collections.defaultdict (fn [] []))})
 
 (defn args->fns [args]
@@ -102,6 +138,111 @@
         ;; Yield the rest unmodified
         (yield head))))
 
+(defn add-output [template lname desc value &optional [export-name None]]
+  "Add an export to the template"
+
+  (setv ret
+        (Output
+          lname
+          :Description desc
+          :Value value))
+
+  (if export-name
+      (setv ret.Export (Export export-name)))
+
+  (.add-output template ret)
+  ret)
+
+(defn add-sg [edef template lname desc ingress &optional [tag-name None] [output-desc None] [export-name None]]
+
+  "Adds a security group to the template with the given logical name,
+   description and ingress rules.
+   
+   ingress should be a list of lists which can be passed to
+   SecurityGroupRule as arugments.
+
+   If tag-name is unspecified it will be set to desc"
+
+  (setv tag-name (or tag-name desc))
+
+  (setv ret
+        (SecurityGroup
+          lname
+          :GroupDescription desc
+          :Tags [{"Name" tag-name}]
+          :VpcId (get edef :config :vpc)
+          :SecurityGroupEgress [(SecurityGroupRule :CidrIp "0.0.0.0/0" :IpProtocol "-1")]
+          :SecurityGroupIngress (list (map (fn [a] (apply-kw SecurityGroupRule [] a)) ingress))))
+  (.add-resource template ret)
+
+  (if output-desc
+      (add-output template (+ lname "Output") output-desc (Ref ret) export-name))
+  
+  ret)
+
+(defn add-elb-sg [edef template]
+  "Adds the security group for the ELB"
+
+  (setv ret (add-sg edef template "ElbSecurityGroup" (Sub "${AWS::StackName}-ElbSg")
+                    
+                    [{:CidrIp "0.0.0.0/0" :IpProtocol "tcp" :FromPort 443 :ToPort 443}
+                     {:CidrIp "0.0.0.0/0" :IpProtocol "tcp" :FromPort 80 :ToPort 80}]
+                    
+                    :output-desc "Security group ID assigned to the ELB"
+                    :export-name (Sub "${AWS::StackName}-ElbSg")))
+  ret)
+
+(defn add-inst-sg [edef template]
+  "Adds a convenience security group to the ELB to assign instances to"
+
+  (setv ret (add-sg edef template "InstanceSecurityGroup" (Sub "${AWS::StackName}-InstSg")
+
+                    [{:IpProtocol "-1" :SourceSecurityGroupId (Ref "ElbSecurityGroup")}]
+
+                    :output-desc "Convenience SG to assign to instances"
+                    :export-name (Sub "${AWS::StackName}-InstSg"))))
+
+(defn elbv2-attributes [edef]
+  "returns a list of LoadBalancerAttributes based on the EDEF"
+
+  (setv ret [(LoadBalancerAttributes :Key "idle_timeout.timeout_seconds"
+                                     :Value (str (get edef :config :idle-timeout-seconds)))])
+
+  (if-get edef log-bucket [:config :log-bucket]
+          (.extend ret [(LoadBalancerAttributes :Key "access_logs.s3.enabled" :Value "true")
+                        (LoadBalancerAttributes :Key "access_logs.s3.bucket" :Value log-bucket)
+                        (LoadBalancerAttributes :Key "access_logs.s3.prefix" :Value (Sub "${AWS::StackName}-ElbLogs"))]))
+
+  ret)
+
+(defn add-elb [edef template lname elb-name security-groups &optional [subnets None] [tag-name None]]
+  
+  "Add an application load-balancer to the template."
+
+  (setv subnets (or subnets (get edef :config :subnet-ids)))
+  (setv tag-name (or tag-name elb-name))
+
+  (setv ret
+        (LoadBalancer
+          lname
+          :Name elb-name
+          :SecurityGroups security-groups
+          :Subnets subnets
+          :Tags [{"Name" tag-name}]
+          :LoadBalancerAttributes (elbv2-attributes edef)))
+
+  (.add-resource template ret)
+
+  ret)
+
+(defn add-main-elb [edef template]
+  (setv ret (add-elb edef template "ELB" (Ref "AWS::StackName")
+                     [(Ref "ElbSecurityGroup")]))
+  (add-output template "ElbArnOutput" "ARN of the ELB" (Ref ret) (Sub "${AWS::StackName}-ElbArn"))
+  (add-output template "ElbDnsOutput" "DNS name of the ELB" (GetAtt "ELB" "DNSName") (Sub "${AWS::StackName}-ElbDns"))
+
+  ret)
+
 (defn ez-elb-f [edef]
   
   "This function is called by the ez-elb macro after it's body has
@@ -116,8 +257,19 @@
   (*log*.debug "Post-body ELB-Def:\n\n%s\n" (.pformat (EzPrettyPrinter) edef))
 
   (setv template (Template))
-  (.add_resource template (Bucket "SomeBucket"))
-  (.to_json template))
+
+  (add-elb-sg edef template)
+  (add-inst-sg edef template)
+  (add-main-elb edef template)
+
+  (setv ret (.to_json template))
+
+  (*log*.debug "Template:\n\n%s\n%s%s\n"
+               (* "-" 80)
+               (yaml.safe_dump (json.loads ret) :encoding "utf-8")
+               (* "-" 80))
+
+  (*log*.debug "Post-build ELB-Def:\n\n%s\n" (.pformat (EzPrettyPrinter) edef)))
 
 (defmacro ez-elb [&rest args]
   "This is the core macro for defining an EZ-ELB."
@@ -162,6 +314,16 @@
           (target-single h (get pp 0) (get pp 1) protocol)
           (raise (ValidationException (+ "invalid port/path expression in target definition: " org-form)))))))
 
+(defn pop-target-protocol [args]
+
+  "Removes and returns the protocol at the end of args if there, otherwise returns HTTP"  
+  
+  ;; If the last arg is a protocol keyword, pop it off and update the
+  ;; protocol value.
+  (if (in (get args -1) [:http :https])
+      (.upper (name (.pop args)))
+      "HTTP"))
+
 (defmacro target [&rest args]
 
   "Defines a target for a path. It can be used in the following
@@ -190,9 +352,7 @@
 
   ;; If the last arg is a protocol keyword, pop it off and update the
   ;; protocol value.
-  (setv protocol "HTTP")
-  (if (in (get args -1) [:http :https])
-      (setv protocol (.upper (name (.pop args)))))
+  (setv protocol (pop-target-protocol args))
 
   ;; The first argument is always either a host or list of hosts. If
   ;; it's not already a collection, make it into one.
