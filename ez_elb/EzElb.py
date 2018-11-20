@@ -79,6 +79,10 @@ class EzElb(object):
         self._log_bucket = None
         self._ecs_redirect = False
         self.idle_timeout_seconds = 120
+        self._custom_elb_sgs = None
+
+    def custom_security_groups(self, *ids):
+        self._custom_elb_sgs = list(ids)
 
     def priority_hash(self, name):
         ret = int(hashlib.md5(name).hexdigest(), 16) % 50000
@@ -243,49 +247,53 @@ class EzElb(object):
                                           "same type (ip or instance)." % name)
 
         # Build Security Group
-        elb_sg = SecurityGroup(
-            "ElbSecurityGroup",
-            GroupDescription=Sub("${AWS::StackName}-ElbSg"),
-            Tags=self.tags_with(Name=Sub("${AWS::StackName}-ElbSg")),
-            VpcId=self.vpc_id,
-            SecurityGroupEgress=[SecurityGroupRule(CidrIp="0.0.0.0/0", IpProtocol="-1")],
-            SecurityGroupIngress=[
-                SecurityGroupRule(CidrIp="0.0.0.0/0", IpProtocol="tcp", FromPort=443, ToPort=443),
-                SecurityGroupRule(CidrIp="0.0.0.0/0", IpProtocol="tcp", FromPort=80, ToPort=80)
-            ]
-        )
-        self.template.add_resource(elb_sg)
-        self.template.add_output(Output(
-            "ElbSecurityGroupOutput",
-            Description="Security group ID assigned to the ELB",
-            Value=Ref(elb_sg),
-            Export=Export(Sub("${AWS::StackName}-ElbSg"))
-        ))
+        if self._custom_elb_sgs:
+            elb_sgs = self._custom_elb_sgs
+        else:
+            elb_sg = SecurityGroup(
+                "ElbSecurityGroup",
+                GroupDescription=Sub("${AWS::StackName}-ElbSg"),
+                Tags=self.tags_with(Name=Sub("${AWS::StackName}-ElbSg")),
+                VpcId=self.vpc_id,
+                SecurityGroupEgress=[SecurityGroupRule(CidrIp="0.0.0.0/0", IpProtocol="-1")],
+                SecurityGroupIngress=[
+                    SecurityGroupRule(CidrIp="0.0.0.0/0", IpProtocol="tcp", FromPort=443, ToPort=443),
+                    SecurityGroupRule(CidrIp="0.0.0.0/0", IpProtocol="tcp", FromPort=80, ToPort=80)
+                ]
+            )
+            self.template.add_resource(elb_sg)
+            self.template.add_output(Output(
+                "ElbSecurityGroupOutput",
+                Description="Security group ID assigned to the ELB",
+                Value=Ref(elb_sg),
+                Export=Export(Sub("${AWS::StackName}-ElbSg"))
+            ))
 
-        # Build Attachment Security Group
-        inst_sg = SecurityGroup(
-            "InstanceSecurityGroup",
-            GroupDescription=Sub("${AWS::StackName}-InstSg"),
-            Tags=self.tags_with(Name=Sub("${AWS::StackName}-InstSg")),
-            VpcId=self.vpc_id,
-            SecurityGroupEgress=[SecurityGroupRule(CidrIp="0.0.0.0/0", IpProtocol="-1")],
-            SecurityGroupIngress=[
-                SecurityGroupRule(IpProtocol="-1", SourceSecurityGroupId=Ref(elb_sg))
-            ]
-        )
-        self.template.add_resource(inst_sg)
-        self.template.add_output(Output(
-            "InstanceSecurityGroupOutput",
-            Description="Convenience SG to assign to instances",
-            Value=Ref(inst_sg),
-            Export=Export(Sub("${AWS::StackName}-InstSg"))
-        ))
+            # Build Attachment Security Group
+            inst_sg = SecurityGroup(
+                "InstanceSecurityGroup",
+                GroupDescription=Sub("${AWS::StackName}-InstSg"),
+                Tags=self.tags_with(Name=Sub("${AWS::StackName}-InstSg")),
+                VpcId=self.vpc_id,
+                SecurityGroupEgress=[SecurityGroupRule(CidrIp="0.0.0.0/0", IpProtocol="-1")],
+                SecurityGroupIngress=[
+                    SecurityGroupRule(IpProtocol="-1", SourceSecurityGroupId=Ref(elb_sg))
+                ]
+            )
+            self.template.add_resource(inst_sg)
+            self.template.add_output(Output(
+                "InstanceSecurityGroupOutput",
+                Description="Convenience SG to assign to instances",
+                Value=Ref(inst_sg),
+                Export=Export(Sub("${AWS::StackName}-InstSg"))
+            ))
+            elb_sgs = [Ref("ElbSecurityGroup")]
 
         # Build ELB
         elb = LoadBalancer(
             "ELB",
             Name=Ref("AWS::StackName"),
-            SecurityGroups=[Ref("ElbSecurityGroup")],
+            SecurityGroups=elb_sgs,
             Subnets=self.subnet_ids,
             Tags=self.tags_with(Name=Ref("AWS::StackName")),
             LoadBalancerAttributes=self.elb_attributes()
