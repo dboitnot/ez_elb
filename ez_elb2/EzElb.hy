@@ -1,4 +1,4 @@
-(import [troposphere [Template Ref Sub GetAtt Output Export]]
+(import [troposphere [Template Ref Sub GetAtt Output Export ImportValue]]
         [troposphere.cloudwatch [Alarm MetricDimension]]
         [troposphere.ec2 [SecurityGroup SecurityGroupRule]]
         [troposphere.ecs [TaskDefinition ContainerDefinition Environment PortMapping Service
@@ -14,11 +14,16 @@
         collections
         threading
         copy
-        yaml
+        yaml       
         json
         logging)
 
 (setv *log* (logging.getLogger (+ "sceptre." --name--)))
+
+;; The CONF_KEYWORDS global is used by validation functions and is
+;; populated as keywords are defined.
+(setv CONF_KEYWORDS [])
+
 
 (defclass ValidationException [Exception]
   (defn --init-- [self message]
@@ -104,6 +109,11 @@
      (setv ~v (apply (partial get ~coll) ~lookup))
      ~if-true
      (except [KeyError] ~if-false)))
+
+;;
+;; Troposphere Convenience Functions
+;;
+(defn import-value [key] (ImportValue key))
 
 ;;
 ;; EZ-ELB Core Functions & Macros
@@ -243,6 +253,28 @@
 
   ret)
 
+(defn validate-edef [edef]
+  ;; Check for required conf keywords
+  (setv conf (:config edef))
+  (for [kwd CONF_KEYWORDS]
+    (if (:required kwd)
+        (unless (in (:conf-kw kwd) conf)
+          (raise (ValidationException
+                   (.format "Missing required keyword {} ({})"
+                            (:user-kw kwd)
+                            (:desc kwd))))))))
+
+(defn edef->template [edef]
+  (validate-edef edef)
+  
+  (setv template (Template))
+
+  (add-elb-sg edef template)
+  (add-inst-sg edef template)
+  (add-main-elb edef template)
+  
+  (.to_json template))
+
 (defn ez-elb-f [edef]
   
   "This function is called by the ez-elb macro after it's body has
@@ -253,23 +285,18 @@
   ;; dicts for pretty printing. This seems to be the only reliable way
   ;; to get readable edef dumps without re-writing pprint.
   (assoc edef :target-paths (dict (:target-paths edef)))
-  
   (*log*.debug "Post-body ELB-Def:\n\n%s\n" (.pformat (EzPrettyPrinter) edef))
 
-  (setv template (Template))
-
-  (add-elb-sg edef template)
-  (add-inst-sg edef template)
-  (add-main-elb edef template)
-
-  (setv ret (.to_json template))
+  (setv ret (edef->template edef))
 
   (*log*.debug "Template:\n\n%s\n%s%s\n"
                (* "-" 80)
                (yaml.safe_dump (json.loads ret) :encoding "utf-8")
                (* "-" 80))
 
-  (*log*.debug "Post-build ELB-Def:\n\n%s\n" (.pformat (EzPrettyPrinter) edef)))
+  (*log*.debug "Post-build ELB-Def:\n\n%s\n" (.pformat (EzPrettyPrinter) edef))
+
+  ret)
 
 (defmacro ez-elb [&rest args]
   "This is the core macro for defining an EZ-ELB."
@@ -371,12 +398,18 @@
 ;;
 ;; Keyword Definitions
 ;;
+(defn reg-conf-kw [user-kw conf-kw desc required]
+  (.append CONF_KEYWORDS
+           { :user-kw user-kw
+            :conf-kw conf-kw
+            :desc desc
+            :required required}))
 
 (defmacro defkw [kw &rest args]
   "define a keyword function just like defn but specifying a keyword for the name"
   (+ `(defn ~(HySymbol (+ "ez-elb-kw-" (name kw)))) (list args)))
 
-(defmacro/g! defkw-kv [kw desc &optional [xform 'identity]]
+(defmacro/g! defkw-kv [kw desc &optional [required False] [xform 'identity]]
 
   "Define a simple key/value keyword function which sets the
   associated value in the :config map.
@@ -391,17 +424,20 @@
       (do (setv user-kw (get kw 0))
           (setv conf-kw (get kw 1)))
       (do (setv user-kw kw)
-          (setv conf-kw kw)))
+          (setv conf-kw kw)))  
   
-  `(defkw ~user-kw [~g!v] ~desc     
-     (assoc (get *context*.edef :config) ~conf-kw (~xform ~g!v))))
+  `(do
+     (apply reg-conf-kw [~user-kw ~conf-kw ~desc ~required])
+     (defkw ~user-kw [~g!v] ~desc     
+       (assoc (get *context*.edef :config) ~conf-kw (~xform ~g!v)))))
 
-(defkw-kv [:name :elb-name] "the name of the ELB")
-(defkw-kv :subnet-ids "the subnet IDs")
-(defkw-kv :vpc "the VPC for the ELB")
+(defkw-kv [:name :elb-name] "the name of the ELB" True)
+(defkw-kv :subnet-ids "the subnet IDs" True)
+(defkw-kv :vpc "the VPC for the ELB" True)
 (defkw-kv :certificate-id "certificate for the ELB")
 (defkw-kv :alarm-topic "SMS topic where CloudWatch alarms will be sent")
 (defkw-kv :log-bucket "ELB logs will be sent to this bucket")
-(defkw-kv :global-tags "a list of tags to assign to all taggable resources in key/value pairs" list-pairs->tag-list)
+(defkw-kv :global-tags "a list of tags to assign to all taggable resources in key/value pairs"
+  False list-pairs->tag-list)
 
 (defkw :no-op [] "does nothing" (fn [_]))
