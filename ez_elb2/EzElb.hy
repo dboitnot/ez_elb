@@ -34,12 +34,14 @@
   
   (defn --repr-- [self]
     (cond [(keyword? self.obj) (+ ":" (name self.obj))]
+          [(instance? collections.defaultdict self.obj) (.--repr-- (dict self.obj))]
           [True (.--repr-- self.obj)])))
 
 (defclass EzPrettyPrinter [pprint.PrettyPrinter object]
   (defn format [self obj ctx mxl lvl]
     (setv new-obj
           (cond [(keyword? obj) (PrettyRepr obj)]
+                [(instance? collections.defaultdict obj) (PrettyRepr obj)]
                 [True obj]))
     (.format (super EzPrettyPrinter self) new-obj ctx mxl lvl)))
 
