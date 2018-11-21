@@ -34,6 +34,13 @@
   "returns the arity of the given function"
   (len (get (inspect.getargspec f) 0)))
 
+(defn map-dict [kf vf d]
+  
+  "returns a new dictionary from d with it's keys mapped through kf
+  and it's values mapped through vf"
+
+  (dict (map (fn [k] [(kf k) (vf (get d k))]) d)))
+
 (defmacro if-get [coll v lookup if-true &optional [if-false '(do)]]
 
   "If lookup can be found in coll then v is assigned it's value and

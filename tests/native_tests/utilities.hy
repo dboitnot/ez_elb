@@ -45,6 +45,12 @@
   (assert= (arity (fn [] pass)) 0)
   (assert= (arity (fn [a b] pass)) 2))
 
+(defn test-map-dict []
+  (assert= (map-dict (fn [c] (.lower c))
+                     (fn [c] (.upper c))
+                     {"A" "b" "C" "d"})
+           {"a" "B" "c" "D"}))
+
 (defn test-if-get []
   (setv col { :a { :a "aa" :b "ab" }
              :b { :a "ba" :b "bb" } })
