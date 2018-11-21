@@ -36,16 +36,31 @@
              :elb-name "elbname"
              :vpc "vpcid"
              :subnet-ids ["subnetid1" "subnetid2"])
+
+      (setv *context*.edef empty-edef)
+      
       empty-edef))
 
 (defn test-empty [empty-edef]
   (try
-    (edef->template empty-edef)    
+    (edef->template empty-edef)
     (except [e ValidationException])
     (else (raise (Exception "expected ValidationException")))))
 
 (defn test-minimum [edef]
   (setv tmp (edef->test-template edef))
-  (assert-resource tmp "ELB" "AWS::ElasticLoadBalancingV2::LoadBalancer")
-  
-  #_(assert= 0 1))
+  (assert-resource tmp "ELB" "AWS::ElasticLoadBalancingV2::LoadBalancer"
+                   (p= "Subnets" ["subnetid1" "subnetid2"]))
+  #_(assert-resource tmp "ElbSecurityGroup" "AWS::EC2::SecurityGroup")
+  #_(assert-resource tmp "InstanceSecurityGroup" "AWS::EC2::SecurityGroup")
+  #_(assert-resource tmp "DefaultTargetGroup" "AWS::ElasticLoadBalancingV2::TargetGroup")
+  #_(assert-resource tmp "HttpsListener" "AWS::ElasticLoadBalancingV2::Listener"))
+
+(defn test-target [edef]
+  (target-single "somehost" 1234 "somepath" "HTTPS")
+
+  (setv tmp (edef->test-template edef))
+
+  #_(assert-resource tmp "PathRlsomepath" "AWS::ElasticLoadBalancingV2::ListenerRule")
+  #_(assert-resource tmp "PathRlnsomepath" "AWS::ElasticLoadBalancingV2::ListenerRule")
+  #_(assert-resource tmp "PathTgsomepath" "AWS::ElasticLoadBalancingV2::TargetGroup"))
