@@ -21,7 +21,9 @@
 
   (print "--- CF Template ---")
   (print (yaml.safe_dump ret))
-  (print "-------------------"))
+  (print "-------------------")
+
+  ret)
 
 #@(pytest.fixture
     (defn empty-edef []
@@ -44,5 +46,6 @@
 
 (defn test-minimum [edef]
   (setv tmp (edef->test-template edef))
+  (assert-resource tmp "ELB" "AWS::ElasticLoadBalancingV2::LoadBalancer")
   
-  (assert= 0 1))
+  #_(assert= 0 1))
