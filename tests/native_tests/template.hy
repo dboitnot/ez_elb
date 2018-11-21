@@ -5,22 +5,13 @@
         yaml)
 (require [ez_elb2.EzElb [*]])
 
-(defn dumpable [obj]
-
-  "converts obj to something easy to read in debug output"
-
-  (cond [(instance? dict obj) (dict)]
-        [(iterable? obj) (list (map dumpable obj))]
-        [(keyword? obj) (name obj)]
-        [True obj]))
-
 (defn edef->test-template [edef]
 
   "runs an edef through edef->template but instead of JSON it returns
   a more inspect-able representation of the CF template"
 
   (print "------ EDEF ------")
-  (print (yaml.safe_dump (dumpable edef)))
+  (print (.pformat (EzPrettyPrinter) edef))
   (print "------------------")
 
   (setv ret (->> (edef->template edef)
@@ -28,8 +19,6 @@
                  (yaml.safe_dump)  ; PyObj -> YAML w/o special references
                  (yaml.load)))     ; YAML  -> Python object without special references
 
-  ;; Print a readable (YAML) representation. Pytest will only show
-  ;; this after an error.
   (print "--- CF Template ---")
   (print (yaml.safe_dump ret))
   (print "-------------------"))
@@ -56,4 +45,4 @@
 (defn test-minimum [edef]
   (setv tmp (edef->test-template edef))
   
-  #_(assert= 0 1))
+  (assert= 0 1))
