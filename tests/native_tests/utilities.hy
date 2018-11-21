@@ -1,5 +1,5 @@
 (import [ez_elb2.EzElb [*]])
-(require [ez_elb2.EzElb [*]])
+(require [ez_elb2.util [*]])
 
 (import [native_tests.util [*]])
 

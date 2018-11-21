@@ -1,4 +1,4 @@
-(import [troposphere [Template Ref Sub GetAtt Output Export ImportValue]]
+(import [troposphere [Template Ref Sub GetAtt Output Export]]
         [troposphere.cloudwatch [Alarm MetricDimension]]
         [troposphere.ec2 [SecurityGroup SecurityGroupRule]]
         [troposphere.ecs [TaskDefinition ContainerDefinition Environment PortMapping Service
@@ -8,22 +8,21 @@
                                              TargetDescription Condition Matcher TargetGroupAttribute LoadBalancerAttributes]]
         [troposphere.route53 [RecordSetGroup RecordSet]]
         [troposphere.s3 [Bucket]]
-        [functools [partial]]
-        inspect
+        [functools [partial]]        
         pprint
         collections
         threading
         copy
         yaml       
         json
-        logging)
+        logging
+        [ez_elb2.tropo [*]]
+        [ez_elb2.util [*]]
+        [ez-elb2.conf_kw [*]])
+
+(require [ez_elb2.util [*]])
 
 (setv *log* (logging.getLogger (+ "sceptre." --name--)))
-
-;; The CONF_KEYWORDS global is used by validation functions and is
-;; populated as keywords are defined.
-(setv CONF_KEYWORDS [])
-
 
 (defclass ValidationException [Exception]
   (defn --init-- [self message]
@@ -47,73 +46,6 @@
 ;; A thread-local object used to provide context to functions within
 ;; an ez-elb macro
 (setv *context* (threading.local))
-
-;;
-;; Utility Functions
-;;
-
-(defn dict-keys-kw->str [d]
-  "returns a new dictionary with Hy keyword keys converted to strings"
-  (dict (map (fn [p] [(name (get p 0)) (get p 1)]) (.items d))))
-
-(defn apply-kw [f pargs kws]
-  
-  "apply the function f with the keyword args kws specified as Hy
-  keywords with positional args pargs"
-  
-  (apply f pargs (dict-keys-kw->str kws)))
-
-(defn kw->fname [kw]
-  (+ "ez-elb-kw-" (name kw)))
-
-(defn kw->fn [kw]
-  "returns the function associated with the keyword"
-  (setv d (globals))
-  (setv f-name (mangle (kw->fname kw)))
-  (if (in f-name d)
-      (get d f-name)
-      (raise (NameError (+ "Unknown EZ-ELB keyword :" (name kw))))))
-
-(defn pop-head [col &optional [n 1]]
-  
-  "Removes and returns the first n (default 1) values off the HEAD of
-  a collection, always returns a list."
-  
-  (setv ret (cut col 0 n))
-  (del (cut col 0 n))  
-  ret)
-
-(defn pop-head! [col]
-  "Removes and returns the first item from a collection"
-  (get (pop-head col) 0))
-
-(defn list-pairs->tag-list [l]
-  "returns a list of maps suitable for specifying AWS tags from a list
-  of paired strings"
-
-  (list (map (fn [p] {"Key" (get p 0) "Value" (get p 1)}) (partition l))))
-
-(defn arity [f]
-  "returns the arity of the given function"
-  (len (get (inspect.getargspec f) 0)))
-
-(defmacro if-get [coll v lookup if-true &optional [if-false '(do)]]
-
-  "If lookup can be found in coll then v is assigned it's value and
-  if-true is called. Otherwise if-false is called."
-
-  (if-not (coll? lookup)
-          (setv lookup [lookup]))
-
-  `(try
-     (setv ~v (apply (partial get ~coll) ~lookup))
-     ~if-true
-     (except [KeyError] ~if-false)))
-
-;;
-;; Troposphere Convenience Functions
-;;
-(defn import-value [key] (ImportValue key))
 
 ;;
 ;; EZ-ELB Core Functions & Macros
@@ -394,50 +326,3 @@
                          [True (raise (ValidationException (+ "invalid target expression: " org-form)))]))
 
   `(target-multi ~hosts ~port-paths ~protocol ~org-form))
-
-;;
-;; Keyword Definitions
-;;
-(defn reg-conf-kw [user-kw conf-kw desc required]
-  (.append CONF_KEYWORDS
-           { :user-kw user-kw
-            :conf-kw conf-kw
-            :desc desc
-            :required required}))
-
-(defmacro defkw [kw &rest args]
-  "define a keyword function just like defn but specifying a keyword for the name"
-  (+ `(defn ~(HySymbol (+ "ez-elb-kw-" (name kw)))) (list args)))
-
-(defmacro/g! defkw-kv [kw desc &optional [required False] [xform 'identity]]
-
-  "Define a simple key/value keyword function which sets the
-  associated value in the :config map.
-
-  If kw is a collection, it's first item will be the user-facing
-  keyword and it's second will be the key used in the config dict.
-
-  The user input will be passed through xform before being stored. By
-  default xform is the identity function."
-
-  (if (coll? kw)
-      (do (setv user-kw (get kw 0))
-          (setv conf-kw (get kw 1)))
-      (do (setv user-kw kw)
-          (setv conf-kw kw)))  
-  
-  `(do
-     (apply reg-conf-kw [~user-kw ~conf-kw ~desc ~required])
-     (defkw ~user-kw [~g!v] ~desc     
-       (assoc (get *context*.edef :config) ~conf-kw (~xform ~g!v)))))
-
-(defkw-kv [:name :elb-name] "the name of the ELB" True)
-(defkw-kv :subnet-ids "the subnet IDs" True)
-(defkw-kv :vpc "the VPC for the ELB" True)
-(defkw-kv :certificate-id "certificate for the ELB")
-(defkw-kv :alarm-topic "SMS topic where CloudWatch alarms will be sent")
-(defkw-kv :log-bucket "ELB logs will be sent to this bucket")
-(defkw-kv :global-tags "a list of tags to assign to all taggable resources in key/value pairs"
-  False list-pairs->tag-list)
-
-(defkw :no-op [] "does nothing" (fn [_]))
