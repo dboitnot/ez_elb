@@ -51,10 +51,15 @@
   (setv tmp (edef->test-template edef))
   (assert-resource tmp "ELB" "AWS::ElasticLoadBalancingV2::LoadBalancer"
                    (p= "Subnets" ["subnetid1" "subnetid2"]))
-  #_(assert-resource tmp "ElbSecurityGroup" "AWS::EC2::SecurityGroup")
-  #_(assert-resource tmp "InstanceSecurityGroup" "AWS::EC2::SecurityGroup")
-  #_(assert-resource tmp "DefaultTargetGroup" "AWS::ElasticLoadBalancingV2::TargetGroup")
-  #_(assert-resource tmp "HttpsListener" "AWS::ElasticLoadBalancingV2::Listener"))
+  (assert-resource tmp "ElbSecurityGroup" "AWS::EC2::SecurityGroup")
+  (assert-resource tmp "InstanceSecurityGroup" "AWS::EC2::SecurityGroup")
+  (assert-resource tmp "DefaultTargetGroup" "AWS::ElasticLoadBalancingV2::TargetGroup"
+                   (p= "HealthyThresholdCount" 2)
+                   (p= ["Matcher" "HttpCode"] "200-399")
+                   (p= "Port" 8080)
+                   (p= "Protocol" "HTTP")
+                   (p= "Targets" [{"Id" "deftarget" "Port" 1234}]))
+  (assert-resource tmp "HttpsListener" "AWS::ElasticLoadBalancingV2::Listener"))
 
 (defn test-target [edef]
   (target-single "somehost" 1234 "somepath" "HTTPS")
