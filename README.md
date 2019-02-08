@@ -1,3 +1,3 @@
 # EzELB
 
-![alt text](https://github.com/adam-p/markdown-here/raw/master/src/common/images/icon48.png "Travis Build Status")
+![alt text](https://api.travis-ci.org/dboitnot/ez_elb.svg?branch=master "Travis Build Status")
