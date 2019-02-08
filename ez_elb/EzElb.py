@@ -95,8 +95,8 @@ class EzElb(object):
             self._sg_rules += list(rules)
 
     def allow_cidr(self, *cidrs):
-        self.allow(SecurityGroupRule(CidrIp=c, IpProtocol="tcp", FromPort=443, ToPort=443) for c in cidrs)
-        self.allow(SecurityGroupRule(CidrIp=c, IpProtocol="tcp", FromPort=80, ToPort=80) for c in cidrs)
+        self.allow(*list(SecurityGroupRule(CidrIp=c, IpProtocol="tcp", FromPort=443, ToPort=443) for c in cidrs))
+        self.allow(*list(SecurityGroupRule(CidrIp=c, IpProtocol="tcp", FromPort=80, ToPort=80) for c in cidrs))
 
     def custom_security_groups(self, *ids):
         self._custom_elb_sgs = list(ids)

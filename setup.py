@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="ez_elb",
-    version="0.3.0",
+    version="0.3.1",
     author="Dan Boitnott",
     author_email="boitnott@sigcorp.com",
     description="Easily define complex ELB CloudFormation templates",
