@@ -3,3 +3,4 @@ dist
 ez_elb.egg-info
 *.pyc
 venv
+.idea

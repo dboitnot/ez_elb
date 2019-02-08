@@ -81,6 +81,23 @@ class EzElb(object):
         self.idle_timeout_seconds = 120
         self._custom_elb_sgs = None
 
+        self._sg_rules = [SecurityGroupRule(CidrIp="0.0.0.0/0", IpProtocol="tcp", FromPort=443, ToPort=443),
+                          SecurityGroupRule(CidrIp="0.0.0.0/0", IpProtocol="tcp", FromPort=80, ToPort=80)]
+
+        # The first call to allow() should clear the default _sg_rules, subsequent calls should not.
+        self._reset_sg_rules = True
+
+    def allow(self, *rules):
+        if self._reset_sg_rules:
+            self._sg_rules = list(rules)
+            self._reset_sg_rules = False
+        else:
+            self._sg_rules += list(rules)
+
+    def allow_cidr(self, *cidrs):
+        self.allow(SecurityGroupRule(CidrIp=c, IpProtocol="tcp", FromPort=443, ToPort=443) for c in cidrs)
+        self.allow(SecurityGroupRule(CidrIp=c, IpProtocol="tcp", FromPort=80, ToPort=80) for c in cidrs)
+
     def custom_security_groups(self, *ids):
         self._custom_elb_sgs = list(ids)
 
@@ -256,10 +273,7 @@ class EzElb(object):
                 Tags=self.tags_with(Name=Sub("${AWS::StackName}-ElbSg")),
                 VpcId=self.vpc_id,
                 SecurityGroupEgress=[SecurityGroupRule(CidrIp="0.0.0.0/0", IpProtocol="-1")],
-                SecurityGroupIngress=[
-                    SecurityGroupRule(CidrIp="0.0.0.0/0", IpProtocol="tcp", FromPort=443, ToPort=443),
-                    SecurityGroupRule(CidrIp="0.0.0.0/0", IpProtocol="tcp", FromPort=80, ToPort=80)
-                ]
+                SecurityGroupIngress=self._sg_rules
             )
             self.template.add_resource(elb_sg)
             self.template.add_output(Output(
