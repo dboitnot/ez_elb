@@ -15,7 +15,7 @@ from troposphere.route53 import RecordSetGroup, RecordSet
 
 
 def alpha_numeric_name(s):
-    return s.replace('-', 'DASH').replace('.', 'DOT')
+    return s.replace('-', 'DASH').replace('.', 'DOT').replace('_', 'US')
 
 
 class ValidationException(Exception):
