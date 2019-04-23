@@ -34,6 +34,13 @@ class TargetHost(object):
         else:
             self.type = "ip"
 
+    def to_target_desc(self):
+        ret = TargetDescription(Id=self.host, Port=self.port)
+        if self.type == "ip":
+            # TODO: Support specifying the AZ
+            ret.AvailabilityZone = "all"
+        return ret
+
 
 class HasHosts(object):
     def __init__(self):
@@ -387,18 +394,25 @@ class EzElb(object):
         # Build Target Groups & Rules
         for (name, tp) in self.target_paths.iteritems():
             name_an = alpha_numeric_name(name)
+
             g = TargetGroup(
                 "PathTg" + name_an,
                 Port=tp.hosts[0].port,
                 Protocol=tp.hosts[0].protocol,
                 Tags=self.tags_with(Name="%s/%s" % (self.env_name, name), TargetPath=name),
-                Targets=list(map(lambda h: TargetDescription(Id=h.host, Port=h.port), tp.hosts)),
-                # TargetType=tp.hosts[0].type,
+                Targets=list(map(lambda h: h.to_target_desc(), tp.hosts)),
                 VpcId=self.vpc_id,
                 HealthCheckPath="/%s" % name,
                 HealthyThresholdCount=2,
                 Matcher=Matcher(HttpCode="200-399")
             )
+
+            # TODO: We should probably explicitly specify this for every TG. Not
+            #       doing that now because it will cause lots of updates. Maybe
+            #       in 0.4?
+            if len(tp.hosts) > 0 and tp.hosts[0].type != "instance":
+                g.TargetType = tp.hosts[0].type
+
             if self.sticky:
                 g.TargetGroupAttributes = [
                     TargetGroupAttribute(Key="stickiness.enabled", Value="true"),
