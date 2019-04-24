@@ -15,7 +15,7 @@ from troposphere.route53 import RecordSetGroup, RecordSet
 
 
 def alpha_numeric_name(s):
-    return s.replace('-', 'DASH').replace('.', 'DOT')
+    return s.replace('-', 'DASH').replace('.', 'DOT').replace('_', 'US')
 
 
 class ValidationException(Exception):
@@ -34,6 +34,13 @@ class TargetHost(object):
         else:
             self.type = "ip"
 
+    def to_target_desc(self):
+        ret = TargetDescription(Id=self.host, Port=self.port)
+        if self.type == "ip":
+            # TODO: Support specifying the AZ
+            ret.AvailabilityZone = "all"
+        return ret
+
 
 class HasHosts(object):
     def __init__(self):
@@ -46,6 +53,10 @@ class HasHosts(object):
 class TargetPath(HasHosts):
     def __init__(self):
         super(TargetPath, self).__init__()
+        self.health_check_matcher = Matcher(HttpCode="200-399")
+
+    def set_health_check_codes(self, codes):
+        self.health_check_matcher = Matcher(HttpCode=codes)
 
 
 class AltListener(HasHosts):
@@ -159,9 +170,12 @@ class EzElb(object):
     def http_redirect_target(self, host, port):
         self.http_redirect_targets.append(TargetHost(host, port))
 
-    def target(self, host, port, path, protocol="HTTP"):
+    def target(self, host, port, path,
+               protocol="HTTP", health_check_codes=None):
         target_path = self.target_paths[path]
         target_path.add_host(host, port, protocol)
+        if health_check_codes is not None:
+            target_path.set_health_check_codes(health_check_codes)
 
     def log_bucket(self, bucket):
         self._log_bucket = bucket
@@ -408,18 +422,25 @@ class EzElb(object):
         # Build Target Groups & Rules
         for (name, tp) in self.target_paths.iteritems():
             name_an = alpha_numeric_name(name)
+
             g = TargetGroup(
                 "PathTg" + name_an,
                 Port=tp.hosts[0].port,
                 Protocol=tp.hosts[0].protocol,
                 Tags=self.tags_with(Name="%s/%s" % (self.env_name, name), TargetPath=name),
-                Targets=list(map(lambda h: TargetDescription(Id=h.host, Port=h.port), tp.hosts)),
-                # TargetType=tp.hosts[0].type,
+                Targets=list(map(lambda h: h.to_target_desc(), tp.hosts)),
                 VpcId=self.vpc_id,
                 HealthCheckPath="/%s" % name,
                 HealthyThresholdCount=2,
-                Matcher=Matcher(HttpCode="200-399")
+                Matcher=tp.health_check_matcher
             )
+
+            # TODO: We should probably explicitly specify this for every TG. Not
+            #       doing that now because it will cause lots of updates. Maybe
+            #       in 0.4?
+            if len(tp.hosts) > 0 and tp.hosts[0].type != "instance":
+                g.TargetType = tp.hosts[0].type
+
             if self.sticky:
                 g.TargetGroupAttributes = [
                     TargetGroupAttribute(Key="stickiness.enabled", Value="true"),
@@ -459,14 +480,18 @@ class EzElb(object):
             self.template.add_resource(tg)
             self.attach_alarm(tg)
 
-            self.template.add_resource(Listener(
+            listener = Listener(
                 "AltListener%d" % al.port,
-                Certificates=list(map(lambda i: Certificate(CertificateArn=i), self.cert_ids)),
                 DefaultActions=[Action(Type="forward", TargetGroupArn=Ref(tg_name))],
                 LoadBalancerArn=Ref("ELB"),
                 Port=al.port,
                 Protocol=al.protocol
-            ))
+            )
+
+            if al.protocol == "HTTPS":
+                listener.Certificates = list(map(lambda i: Certificate(CertificateArn=i), self.cert_ids))
+
+            self.template.add_resource(listener)
 
         self._json = self.template.to_json()
         return self._json
