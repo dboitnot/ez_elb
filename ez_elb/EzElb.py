@@ -91,12 +91,17 @@ class EzElb(object):
         self._ecs_redirect = False
         self.idle_timeout_seconds = 120
         self._custom_elb_sgs = None
+        self._deletion_protection = False
 
         self._sg_rules = [SecurityGroupRule(CidrIp="0.0.0.0/0", IpProtocol="tcp", FromPort=443, ToPort=443),
                           SecurityGroupRule(CidrIp="0.0.0.0/0", IpProtocol="tcp", FromPort=80, ToPort=80)]
 
-        # The first call to allow() should clear the default _sg_rules, subsequent calls should not.
+        # The first call to allow() should clear the default _sg_rules,
+        # subsequent calls should not.
         self._reset_sg_rules = True
+
+    def deletion_protection(self, p):
+        self._deletion_protection = p
 
     def allow(self, *rules):
         if self._reset_sg_rules:
@@ -176,13 +181,19 @@ class EzElb(object):
 
     def elb_attributes(self):
         ret = [
-            LoadBalancerAttributes(Key="idle_timeout.timeout_seconds", Value=str(self.idle_timeout_seconds))
+            LoadBalancerAttributes(Key="idle_timeout.timeout_seconds",
+                                   Value=str(self.idle_timeout_seconds)),
+            LoadBalancerAttributes(Key="deletion_protection.enabled",
+                                   Value="true" if self._deletion_protection else "false")
         ]
         if self._log_bucket is not None:
             ret += [
-                LoadBalancerAttributes(Key="access_logs.s3.enabled", Value="true"),
-                LoadBalancerAttributes(Key="access_logs.s3.bucket", Value=self._log_bucket),
-                LoadBalancerAttributes(Key="access_logs.s3.prefix", Value=Sub("${AWS::StackName}-ElbLogs"))
+                LoadBalancerAttributes(Key="access_logs.s3.enabled",
+                                       Value="true"),
+                LoadBalancerAttributes(Key="access_logs.s3.bucket",
+                                       Value=self._log_bucket),
+                LoadBalancerAttributes(Key="access_logs.s3.prefix",
+                                       Value=Sub("${AWS::StackName}-ElbLogs"))
             ]
         return ret
 
