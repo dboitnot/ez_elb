@@ -459,14 +459,18 @@ class EzElb(object):
             self.template.add_resource(tg)
             self.attach_alarm(tg)
 
-            self.template.add_resource(Listener(
+            listener = Listener(
                 "AltListener%d" % al.port,
-                Certificates=list(map(lambda i: Certificate(CertificateArn=i), self.cert_ids)),
                 DefaultActions=[Action(Type="forward", TargetGroupArn=Ref(tg_name))],
                 LoadBalancerArn=Ref("ELB"),
                 Port=al.port,
                 Protocol=al.protocol
-            ))
+            )
+
+            if al.protocol == "HTTPS":
+                listener.Certificates = list(map(lambda i: Certificate(CertificateArn=i), self.cert_ids))
+
+            self.template.add_resource(listener)
 
         self._json = self.template.to_json()
         return self._json
