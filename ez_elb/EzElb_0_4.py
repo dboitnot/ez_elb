@@ -91,12 +91,7 @@ class EzElb(object):
         self._ecs_redirect = False
         self.idle_timeout_seconds = 120
         self._custom_elb_sgs = None
-
-        if name is None:
-            self._elb_name = Ref("AWS::StackName")
-        else:
-            self._elb_name = name
-
+        self._elb_name = name
         self._deletion_protection = False
 
         if internal:
