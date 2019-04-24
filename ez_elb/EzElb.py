@@ -53,6 +53,10 @@ class HasHosts(object):
 class TargetPath(HasHosts):
     def __init__(self):
         super(TargetPath, self).__init__()
+        self.health_check_matcher = Matcher(HttpCode="200-399")
+
+    def set_health_check_codes(self, codes):
+        self.health_check_matcher = Matcher(HttpCode=codes)
 
 
 class AltListener(HasHosts):
@@ -155,9 +159,12 @@ class EzElb(object):
     def http_redirect_target(self, host, port):
         self.http_redirect_targets.append(TargetHost(host, port))
 
-    def target(self, host, port, path, protocol="HTTP"):
+    def target(self, host, port, path,
+               protocol="HTTP", health_check_codes=None):
         target_path = self.target_paths[path]
         target_path.add_host(host, port, protocol)
+        if health_check_codes is not None:
+            target_path.set_health_check_codes(health_check_codes)
 
     def log_bucket(self, bucket):
         self._log_bucket = bucket
@@ -404,7 +411,7 @@ class EzElb(object):
                 VpcId=self.vpc_id,
                 HealthCheckPath="/%s" % name,
                 HealthyThresholdCount=2,
-                Matcher=Matcher(HttpCode="200-399")
+                Matcher=tp.health_check_matcher
             )
 
             # TODO: We should probably explicitly specify this for every TG. Not
