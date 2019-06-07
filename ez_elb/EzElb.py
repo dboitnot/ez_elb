@@ -92,6 +92,7 @@ class EzElb(object):
         self.idle_timeout_seconds = 120
         self._custom_elb_sgs = None
 
+        self._specified_elb_name = name
         if name is None:
             self._elb_name = Ref("AWS::StackName")
         else:
@@ -110,6 +111,31 @@ class EzElb(object):
         # The first call to allow() should clear the default _sg_rules,
         # subsequent calls should not.
         self._reset_sg_rules = True
+
+    #
+    # At the moment CloudFormation can't handle recreation of the ELB. When it
+    # tries to update listeners it fails because it tries to assign the
+    # target groups to the new ELB. This fails with:
+    #    cannot be associated with more than one load balancer
+    #
+    # This problem is described here:
+    #   https://forums.aws.amazon.com/thread.jspa?threadID=254544
+    #
+    # To work around this, we'll assign names to the target groups which change
+    # when the ELB name changes. If self._specified_elb_name == None then we
+    # won't specify a name for the target group.
+    #
+    def name_target_group(self, tg):
+        if self._specified_elb_name is None:
+            return
+
+        # The maximum size for a TargetGroup name is 32 characters.
+        # Our name will be:
+        #     Stack name - up to 10 chars, dash
+        #   + TG title   - up to 10 chars, dash
+        #   + Hash
+        #   ------------ Truncated to 32 chars
+        tg.Name = (self._elb_name[:10] + '-' + tg.title[:10] + '-' + hashlib.md5(self._elb_name + tg.title).hexdigest())[:32]
 
     def deletion_protection(self, p):
         self._deletion_protection = p
@@ -381,6 +407,7 @@ class EzElb(object):
             HealthyThresholdCount=2,
             Matcher=Matcher(HttpCode="200-399")
         )
+        self.name_target_group(default_tg)
         self.template.add_resource(default_tg)
         self.attach_alarm(default_tg)
 
@@ -407,6 +434,7 @@ class EzElb(object):
                 HealthyThresholdCount=2,
                 Matcher=Matcher(HttpCode="200-399")
             )
+            self.name_target_group(http_tg)
             self.template.add_resource(http_tg)
             self.attach_alarm(http_tg)
 
@@ -439,6 +467,7 @@ class EzElb(object):
                 HealthyThresholdCount=2,
                 Matcher=tp.health_check_matcher
             )
+            self.name_target_group(g)
 
             # TODO: We should probably explicitly specify this for every TG. Not
             #       doing that now because it will cause lots of updates. Maybe
@@ -482,6 +511,7 @@ class EzElb(object):
                 HealthyThresholdCount=2,
                 Matcher=Matcher(HttpCode="200-399")
             )
+            self.name_target_group(tg)
             self.template.add_resource(tg)
             self.attach_alarm(tg)
 
