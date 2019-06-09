@@ -67,7 +67,9 @@ class AltListener(HasHosts):
 
 
 class EzElb(object):
-    def __init__(self, env_name, vpc_id, name=None, internal=False):
+    def __init__(self, env_name, vpc_id, name=None, internal=False,
+                 tg_salt=None):
+
         self.env_name = env_name
         self.vpc_id = vpc_id
 
@@ -91,6 +93,7 @@ class EzElb(object):
         self._ecs_redirect = False
         self.idle_timeout_seconds = 120
         self._custom_elb_sgs = None
+        self._tg_salt = tg_salt
 
         self._specified_elb_name = name
         if name is None:
@@ -125,6 +128,15 @@ class EzElb(object):
     # when the ELB name changes. If self._specified_elb_name == None then we
     # won't specify a name for the target group.
     #
+    # This leads to another issue if we have to replace a TargetGroup. Since we
+    # specified a name for the TG, then we'll need a way to change the name
+    # without changing the ELB name. To deal with this we add the tg_salt
+    # option to the constructor. If this is specified then it is added to the
+    # hashed string.
+    #
+    # Note that another way to deal with this would be to remove the target
+    # group and re-add it.
+    #
     def name_target_group(self, tg):
         if self._specified_elb_name is None:
             return
@@ -135,7 +147,12 @@ class EzElb(object):
         #   + TG title   - up to 10 chars, dash
         #   + Hash
         #   ------------ Truncated to 32 chars
-        tg.Name = (self._elb_name[:10] + '-' + tg.title[:10] + '-' + hashlib.md5(self._elb_name + tg.title).hexdigest())[:32]
+
+        hash_string = self._elb_name + tg.title
+        if self._tg_salt:
+            hash_string += str(self._tg_salt)
+
+        tg.Name = (self._elb_name[:10] + '-' + tg.title[:10] + '-' + hashlib.md5(hash_string).hexdigest())[:32]
 
     def deletion_protection(self, p):
         self._deletion_protection = p
