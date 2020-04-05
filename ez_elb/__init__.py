@@ -2,11 +2,13 @@
 from EzElb import EzElb
 from EzElb_0_3 import EzElb as EzElb03
 from EzElb_0_4 import EzElb as EzElb04
+from EzElb_0_5 import EzElb as EzElb05
 
 name = "ez_elb"
 
 EZ_ELB_VERSIONS = {
-    "0.5": lambda: EzElb,
+    "0.6": lambda: EzElb,
+    "0.5": lambda: EzElb05,
     "0.4": lambda: EzElb04,
     "0.3": lambda: EzElb03
 }

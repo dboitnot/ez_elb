@@ -172,7 +172,7 @@ class EzElb(object):
         self._custom_elb_sgs = list(ids)
 
     def priority_hash(self, name):
-        ret = int(hashlib.md5(name).hexdigest(), 16) % 49000 + 1000
+        ret = int(hashlib.md5(name).hexdigest(), 16) % 50000
         while ret in self._priority_cache:
             ret += 1
         self._priority_cache.append(ret)
