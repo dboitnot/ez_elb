@@ -228,6 +228,9 @@ class EzElb(object):
     def log_bucket(self, bucket):
         self._log_bucket = bucket
 
+    def idle_timeout(self, seconds):
+        self.idle_timeout_seconds = seconds
+
     def alt_listener(self, port, protocol="HTTPS"):
         ret = AltListener(port, protocol)
         self.alt_listeners.append(ret)
