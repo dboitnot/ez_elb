@@ -15,7 +15,7 @@ from troposphere.route53 import RecordSetGroup, RecordSet
 
 
 def alpha_numeric_name(s):
-    return s.replace('-', 'DASH').replace('.', 'DOT').replace('_', 'US')
+    return s.replace('-', 'DASH').replace('.', 'DOT').replace('_', 'US').replace('*', 'STAR').replace('?','QM')
 
 
 def taggable_name(s):
