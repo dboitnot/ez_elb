@@ -18,6 +18,10 @@ def alpha_numeric_name(s):
     return s.replace('-', 'DASH').replace('.', 'DOT').replace('_', 'US')
 
 
+def taggable_name(s):
+    return s.replace('*', 'STAR').replace('?','QM')
+
+
 class ValidationException(Exception):
     def __init__(self, message):
         super(Exception, self).__init__(message)
@@ -497,12 +501,13 @@ class EzElb(object):
         # Build Target Groups & Rules
         for (name, tp) in self.target_paths.iteritems():
             name_an = alpha_numeric_name(name)
+            tag_name = taggable_name(name)
 
             g = TargetGroup(
                 "PathTg" + name_an,
                 Port=tp.hosts[0].port,
                 Protocol=tp.hosts[0].protocol,
-                Tags=self.tags_with(Name="%s/%s" % (self.env_name, name), TargetPath=name),
+                Tags=self.tags_with(Name="%s/%s" % (self.env_name, tag_name), TargetPath=tag_name),
                 Targets=list(map(lambda h: h.to_target_desc(), tp.hosts)),
                 VpcId=self.vpc_id,
                 HealthCheckPath="/%s" % name,
