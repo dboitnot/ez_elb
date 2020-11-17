@@ -70,6 +70,14 @@ class AltListener(HasHosts):
         self.protocol = protocol
 
 
+class HealthCheckSettings(object):
+    def __init__(self):
+        self.intervalSeconds = 35
+        self.timeoutSeconds = 30
+        self.healthyThresholdCount = 5
+        self.unhealthyThresholdCount = 2
+
+
 class EzElb(object):
     def __init__(self, env_name, vpc_id, name=None, internal=False,
                  tg_salt=None):
@@ -84,6 +92,7 @@ class EzElb(object):
         self.subnet_ids = []
         self.cert_ids = []
         self.default_targets = []
+        self.default_tg_health_check = HealthCheckSettings()
         self.http_redirect_targets = []
         self.alt_listeners = []
         self.target_paths = collections.defaultdict(TargetPath)
@@ -343,9 +352,9 @@ class EzElb(object):
             raise ValidationException("Use .subnet_id() to specify at least two ELB subnets")
         if len(self.cert_ids) < 1:
             raise ValidationException("Use .certificate_id() to specify at least one certificate")
-        if not self._ecs_redirect and len(self.default_targets) < 1:
-            raise ValidationException("Use .default_target() to specify at least one default target or .ecs_redirect("
-                                      ") to set up a redirect container")
+        # if not self._ecs_redirect and len(self.default_targets) < 1:
+        #     raise ValidationException("Use .default_target() to specify at least one default target or .ecs_redirect("
+        #                               ") to set up a redirect container")
         for (name, tp) in self.target_paths.iteritems():
             if len(set(map(lambda h: h.type, tp.hosts))) != 1:
                 raise ValidationException("Inconsistent target types for %s. All hosts for a given path must have the "
@@ -425,10 +434,10 @@ class EzElb(object):
         ))
 
         # Build Default Target Group
-        if self._ecs_redirect:
-            default_tg_protocol = "HTTP"
-        else:
+        if len(self.default_targets) > 0:
             default_tg_protocol = self.default_targets[0].protocol
+        else:
+            default_tg_protocol = "HTTP"
         default_tg = TargetGroup(
             "DefaultTargetGroup",
             Port=8080,
@@ -436,8 +445,11 @@ class EzElb(object):
             Tags=self.tags_with(Name=Sub("${AWS::StackName}-Default")),
             VpcId=self.vpc_id,
             Targets=list(map(lambda h: TargetDescription(Id=h.host, Port=h.port), self.default_targets)),
-            HealthyThresholdCount=2,
-            Matcher=Matcher(HttpCode="200-399")
+            Matcher=Matcher(HttpCode="200-399"),
+            HealthCheckIntervalSeconds=self.default_tg_health_check.intervalSeconds,
+            HealthCheckTimeoutSeconds=self.default_tg_health_check.timeoutSeconds,
+            HealthyThresholdCount=self.default_tg_health_check.healthyThresholdCount,
+            UnhealthyThresholdCount=self.default_tg_health_check.unhealthyThresholdCount
         )
         self.name_target_group(default_tg)
         self.template.add_resource(default_tg)
