@@ -1,8 +1,8 @@
 # TODO: There's bound to be a better way to do this
-from EzElb import EzElb
-from EzElb_0_3 import EzElb as EzElb03
-from EzElb_0_4 import EzElb as EzElb04
-from EzElb_0_5 import EzElb as EzElb05
+from ez_elb.EzElb import EzElb
+from ez_elb.EzElb_0_3 import EzElb as EzElb03
+from ez_elb.EzElb_0_4 import EzElb as EzElb04
+from ez_elb.EzElb_0_5 import EzElb as EzElb05
 
 name = "ez_elb"
 

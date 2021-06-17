@@ -165,7 +165,7 @@ class EzElb(object):
         if self._tg_salt:
             hash_string += str(self._tg_salt)
 
-        tg.Name = (self._elb_name[:10] + '-' + tg.title[:10] + '-' + hashlib.md5(hash_string).hexdigest())[:32]
+        tg.Name = (self._elb_name[:10] + '-' + tg.title[:10] + '-' + hashlib.md5(hash_string.encode('utf-8')).hexdigest())[:32]
 
     def deletion_protection(self, p):
         self._deletion_protection = p
@@ -185,7 +185,7 @@ class EzElb(object):
         self._custom_elb_sgs = list(ids)
 
     def priority_hash(self, name):
-        ret = int(hashlib.md5(name).hexdigest(), 16) % 48000 + 1000
+        ret = int(hashlib.md5(name.encode('utf-8')).hexdigest(), 16) % 48000 + 1000
         while ret in self._priority_cache:
             ret += 1
         self._priority_cache.append(ret)
@@ -221,7 +221,7 @@ class EzElb(object):
     def tags_with(self, **kwargs):
         ret = []
         ret += self._global_tags
-        for k, v in kwargs.iteritems():
+        for k, v in kwargs.items():
             ret.append({'Key': k, 'Value': v})
         return ret
 
@@ -355,7 +355,7 @@ class EzElb(object):
         # if not self._ecs_redirect and len(self.default_targets) < 1:
         #     raise ValidationException("Use .default_target() to specify at least one default target or .ecs_redirect("
         #                               ") to set up a redirect container")
-        for (name, tp) in self.target_paths.iteritems():
+        for (name, tp) in self.target_paths.items():
             if len(set(map(lambda h: h.type, tp.hosts))) != 1:
                 raise ValidationException("Inconsistent target types for %s. All hosts for a given path must have the "
                                           "same type (ip or instance)." % name)
@@ -511,7 +511,7 @@ class EzElb(object):
             ))
 
         # Build Target Groups & Rules
-        for (name, tp) in self.target_paths.iteritems():
+        for (name, tp) in self.target_paths.items():
             name_an = alpha_numeric_name(name)
             tag_name = taggable_name(name)
 
